@@ -531,7 +531,22 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js');
     });
 }
+<style>
+/* 隱藏右側診斷欄 */
+.report {
+  display: none !important;
+}
+/* 將佈局由4欄改為3欄：側欄、分隔條、主內容 */
+#app {
+  grid-template-columns: var(--sidebar-w) 6px 1fr !important;
+  grid-template-areas:
+    "toolbar toolbar toolbar"
+    "sidebar split main"
+    "sidebar split main";
+}
+</style>
 
+  
 </script>
 </body>
 </html>
