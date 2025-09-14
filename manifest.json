@@ -1,0 +1,10 @@
+{
+  "name": "ChatLibrary",
+  "short_name": "ChatLib",
+  "description": "\u6211\u5011\u7684\u5c0d\u8a71\u5716\u66f8\u9928 - PWA\u7248\u672c",
+  "start_url": "./chat_library.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0c10",
+  "theme_color": "#4A5B7E"
+}
