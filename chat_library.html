@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>我们的对话图书馆 · 稳定版（筛选窗口 · 常驻检索条 · 水印）</title>
+<style>
+  :root{
+    --bg-0:#0b0c10; --bg-1:#0f121a; --panel:#111219; --card:#161824;
+    --text:#e6e6ea; --muted:#9aa0a6;
+    --accent:#4A5B7E; --accent-2:#89DCEB; --soft:#D8A9A9;
+    --border-soft:rgba(255,255,255,.10);
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+    --sidebar-w: 340px;
+    --msg-font: 15px; --msg-lh: 1.9; --msg-pad: 14px 16px; --msg-gap: 14px; --msg-maxw: 1100px;
+  }
+  body.theme-feather{}
+  body.theme-whisper{
+    --bg-0:#F7F3ED; --bg-1:#F2EDE7; --panel:#FFFFFF; --card:#FFFFFF;
+    --text:#2B2B2B; --muted:#6B7280; --accent:#D8A9A9; --accent-2:#C9B18E; --soft:#C9B18E;
+    --border-soft:rgba(2,6,23,.08);
+  }
+  body.theme-ghost{
+    --bg-0:#0A0B0F; --bg-1:#0B0D12; --panel:#0F1116; --card:#0D0F14;
+    --text:#E5E7EB; --muted:#9AA0A6; --accent:#7AA2F7; --accent-2:#5B738C; --soft:#5B738C;
+  }
+  html,body{height:100%; margin:0; color:var(--text);
+    font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Noto Sans SC,PingFang SC,Microsoft YaHei,Arial;}
+  body{background:linear-gradient(180deg,var(--bg-0),var(--bg-1));}
+  #app{display:grid; grid-template-columns: var(--sidebar-w) 6px 1fr 360px; grid-template-rows: 56px auto 1fr;
+       grid-template-areas: "toolbar toolbar toolbar toolbar" "sidebar split main report" "sidebar split main report"; height:100%;}
+  header{grid-area:toolbar; display:flex; align-items:center; gap:10px; padding:10px 12px;
+    background:rgba(255,255,255,.03); border-bottom:1px solid var(--border-soft); position:sticky; top:0; z-index:8; backdrop-filter: blur(6px);}
+  header input[type="search"], header button, header select{background:var(--card); border:1px solid var(--border-soft); color:var(--text);
+    padding:8px 10px; border-radius:10px}
+  header input[type="search"]{flex: 0 1 520px; max-width: 55vw;}
+  .btn{cursor:pointer}
+  .btn[disabled]{opacity:.5; pointer-events:none}
+  aside{grid-area:sidebar; border-right:1px solid var(--border-soft); background:var(--panel); overflow:auto;}
+  #splitter{grid-area:split; cursor:col-resize; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));}
+  main{grid-area:main; overflow:auto;}
+  .report{grid-area:report; border-left:1px solid var(--border-soft); background:var(--panel); overflow:auto; padding:10px}
+  .section{padding:10px}
+  .k{color:var(--muted); font-size:12px; letter-spacing:.1em; margin-bottom:6px; text-transform:uppercase}
+  .window-item{padding:10px; border-radius:10px; margin-bottom:8px; background:var(--panel); border:1px solid var(--border-soft); cursor:pointer; transition:transform .12s ease;}
+  .window-item:hover{transform:translateY(-1px)}
+  .window-item.active{outline:2px solid var(--accent); box-shadow: inset 3px 0 0 var(--accent);}
+  .window-meta{color:var(--muted); font-size:12px}
+  .filters{display:grid; grid-template-columns:1fr; gap:8px}
+  .hint{color:var(--muted); font-size:12px}
+  .chip{display:inline-flex; align-items:center; gap:6px; padding:4px 8px; background:rgba(255,255,255,.06); border:1px solid var(--border-soft); border-radius:999px; font-size:12px; margin:3px 3px 0 0}
+
+  /* Messages + avatars */
+  .message{ display:flex; gap:10px; align-items:flex-start; margin: var(--msg-gap) auto; max-width: var(--msg-maxw); }
+  .message.right{ flex-direction: row-reverse; }
+  .message.system{ justify-content:center; background:transparent; border:none; box-shadow:none; }
+  .avatar{ width:40px; height:40px; border-radius:999px; flex:0 0 40px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.06); border:1px solid var(--border-soft); overflow:hidden; }
+  .avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .avatar svg{ width:26px; height:26px; display:block; }
+  .bubble{ flex:1 1 auto; background:var(--card); border:1px solid var(--border-soft); border-radius:14px; padding: var(--msg-pad); box-shadow: var(--shadow); }
+  .meta{color:var(--muted); font-size:12px; margin-bottom:6px}
+  .body{white-space: pre-wrap; font-size: var(--msg-font); line-height: var(--msg-lh); letter-spacing:.2px;}
+  @keyframes hitPulse { 0%{box-shadow:0 0 0 0 rgba(137,220,235,.35)} 100%{box-shadow:0 0 0 12px rgba(137,220,235,0)}}
+  .message.hit .bubble{ outline:2px solid var(--accent-2); animation: hitPulse 2s ease-out 1; }
+  mark{background: transparent; color: var(--accent-2); font-weight:600; border-bottom:1px dashed var(--accent-2)}
+
+  /* Alias panel */
+  #aliasPanel{position:fixed; right:16px; top:72px; width:380px; max-height:80vh; overflow:auto; background:var(--panel); border:1px solid var(--border-soft); box-shadow:var(--shadow); border-radius:12px; padding:12px; z-index:20; display:none;}
+  #aliasPanel h3{margin:0 0 8px 0; font-size:14px}
+  #aliasPanel .row{display:grid; grid-template-columns: 100px 1fr; gap:6px; align-items:center; margin:6px 0;}
+  #aliasPanel input[type="text"]{background:var(--card); border:1px solid var(--border-soft); color:var(--text); padding:7px 8px; border-radius:8px; outline:none;}
+  #aliasPanel input[type="file"]{display:none}
+  #aliasPanel .note{color:var(--muted); font-size:12px}
+
+  /* Header find bar (常驻) */
+  #findBar{display:flex; align-items:center; gap:8px; white-space:nowrap}
+  #findBar .count{color:var(--muted)}
+  #btnHits{}
+  /* Hits Drawer */
+  #hitsOverlay{position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; z-index:15;}
+  #hitsDrawer{position:fixed; right:0; top:56px; bottom:0; width:520px; background:var(--panel); border-left:1px solid var(--border-soft); box-shadow: var(--shadow); display:none; z-index:16;}
+  #hitsDrawer header{display:flex; align-items:center; gap:8px; padding:10px; border-bottom:1px solid var(--border-soft); background:rgba(255,255,255,.03)}
+  #hitsList{height:calc(100% - 52px); overflow:auto; padding:10px}
+  .hit-item{display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border:1px solid var(--border-soft); background:var(--card); border-radius:10px; margin-bottom:8px; cursor:pointer}
+  .hit-item .title{font-weight:600}
+
+  /* Watermark */
+  #watermark{position:fixed; right:24px; bottom:20px; color:var(--text); opacity:.10; font-size:22px; font-weight:700;
+    letter-spacing:.3px; transform:rotate(-8deg); pointer-events:none; user-select:none; z-index:6}
+</style>
+</head>
+<body class="theme-feather">
+<div id="app">
+  <header>
+    <div class="title">我们的对话图书馆 · 稳定版</div>
+    <input id="q" type="search" placeholder="搜索关键词（空格 AND，双引号精确短语）"/>
+    <div id="findBar">
+      <span class="count" id="resultsCount">0 条结果</span>
+      <button class="btn" id="prevHit" disabled>上一命中</button>
+      <button class="btn" id="nextHit" disabled>下一命中</button>
+      <span id="where" class="hint"></span>
+      <button id="btnHits" class="btn" disabled>命中窗口</button>
+    </div>
+    <label><input id="file" type="file" accept=".json" style="display:none"/><button class="btn" onclick="document.getElementById('file').click()">载入 JSON</button></label>
+    <button id="export" class="btn">导出库</button>
+    <button id="clear" class="btn">清空</button>
+    <select id="theme" class="btn"><option value="feather">Feather</option><option value="whisper">Whisper</option><option value="ghost">Ghost</option></select>
+    <button id="aliasBtn" class="btn">作者命名</button>
+    <button id="wmBtn" class="btn">水印:开</button>
+    <button id="deleteWindow" class="btn" style="border-color:#ff6b6b;color:#ff6b6b;background:rgba(255,107,107,.08)">删除当前窗口</button>
+  </header>
+  <aside>
+    <div class="section">
+      <div class="k">窗口</div>
+      <div id="windows"></div>
+    </div>
+    <div class="section">
+      <div class="k">过滤</div>
+      <div class="filters">
+        <div>
+          <div class="hint">时间</div>
+          <div style="display:grid; gap:6px">
+            <input id="timeFrom" type="datetime-local" step="60"/>
+            <input id="timeTo" type="datetime-local" step="60"/>
+          </div>
+          <div class="filter-actions">
+            <button id="applyTime" class="btn">应用筛选</button>
+            <button id="clearTime" class="btn">清除筛选</button>
+          </div>
+          <div id="timeHint" class="hint"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div id="splitter"></div>
+  <main>
+    <div id="content" style="padding:10px 0 30px"></div>
+  </main>
+  <div class="report">
+    <h3>导入诊断</h3>
+    <div class="kv"><div>文件名</div><div id="r_name">—</div></div>
+    <div class="kv"><div>大小</div><div id="r_size">—</div></div>
+    <div class="kv"><div>识别类型</div><div id="r_type">—</div></div>
+    <div class="kv"><div>对话数</div><div id="r_convs">—</div></div>
+    <div class="kv"><div>节点数</div><div id="r_nodes">—</div></div>
+    <div class="kv"><div>导入消息</div><div id="r_msgs">—</div></div>
+    <div class="kv"><div>跳过原因</div><div id="r_skip">—</div></div>
+    <h3>首条原始结构（预览）</h3>
+    <pre id="r_preview">—</pre>
+    <h3>错误</h3>
+    <pre id="r_err">—</pre>
+  </div>
+</div>
+
+<div id="watermark"></div>
+
+<!-- 命中窗口抽屉 -->
+<div id="hitsOverlay"></div>
+<div id="hitsDrawer">
+  <header>
+    <strong>命中窗口</strong>
+    <span class="hint" id="hitsCount">—</span>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
+      <label class="hint">排序：</label>
+      <select id="hitSort" class="btn">
+        <option value="active">最近活跃</option>
+        <option value="timeAsc">时间从旧到新</option>
+      </select>
+      <button id="closeHits" class="btn">关闭</button>
+    </div>
+  </header>
+  <div id="hitsList"></div>
+</div>
+
+<!-- 别名 + 头像面板 -->
+<div id="aliasPanel">
+  <h3>作者命名（别名 & 头像）</h3>
+  <div id="aliasRows"></div>
+  <div class="note">头像与别名保存在你的浏览器本地（localStorage），不会上传。</div>
+  <div style="display:flex; gap:8px; margin-top:8px">
+    <button id="aliasSave" class="btn">保存</button>
+    <button id="aliasReset" class="btn">重置</button>
+    <button id="aliasClose" class="btn">关闭</button>
+  </div>
+</div>
+
+<script>
+/* ---------- Theme ---------- */
+(function(){
+  const sel=document.getElementById('theme');
+  const saved=localStorage.getItem('cl.theme')||'feather';
+  apply(saved); sel.value=saved;
+  sel.addEventListener('change', ()=> apply(sel.value));
+  function apply(t){
+    document.body.classList.remove('theme-feather','theme-whisper','theme-ghost');
+    document.body.classList.add(t==='whisper'?'theme-whisper':(t==='ghost'?'theme-ghost':'theme-feather'));
+    document.body.dataset.theme=t;
+    localStorage.setItem('cl.theme', t);
+  }
+})();
+
+/* ---------- State ---------- */
+const DB={messages:[], windows:new Map(), current:null};
+const Aliases={ map: JSON.parse(localStorage.getItem('cl.alias')||'{}') };
+const Avatars={ map: JSON.parse(localStorage.getItem('cl.avatars')||'{}') };
+const Filter={ active:false, from:null, to:null };
+const Query={ signature:'', terms:[], from:null, to:null, hits:[], index:-1, winHitCounts:new Map(), winLast:new Map(), lastAutoOpenSig:'' };
+
+/* ---------- Utils ---------- */
+function escapeHTML(s){
+  const map = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+  return String(s).replace(/[&<>"']/g, c => map[c]);
+}
+function fmt(d){const t=new Date(d);if(isNaN(t))return'';const p=n=>String(n).padStart(2,'0');return`${t.getFullYear()}-${p(t.getMonth()+1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}`}
+function highlight(content, terms){ if(!terms||!terms.length) return escapeHTML(content); let html=escapeHTML(content); terms.forEach(t=>{ const safe=t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); html=html.replace(new RegExp(`(${safe})`,'gi'),'<mark>$1</mark>');}); return html; }
+function parseTerms(q){ const a=[]; const re=/"([^"]+)"/g; let m; while((m=re.exec(q))) a.push(m[1]); const rest=q.replace(re,' ').trim(); if(rest) a.push(...rest.split(/\s+/)); return a;}
+function normalize(name){const raw = Aliases.map[name] || name; const n=(raw||'').toLowerCase(); if(n.includes('system'))return'System'; if(n.includes('assistant')||n.includes('ethan'))return'Ethan'; if(n.includes('user')||n.includes('elowen'))return'Elowen'; return raw||'Other'}
+function avatarSVG(key){
+  if(key==='Ethan'){
+    return `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="var(--accent-2)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M32 10c6 0 10 3 13 7-3 2-5 5-6 9-4-1-8-1-12 0-1-4-3-7-6-9 3-4 7-7 13-7z"/><path d="M46 17c5 1 9 5 10 10-4 1-7 3-10 6-3-3-7-5-11-6 1-4 4-7 7-10z"/><path d="M56 28c1 6-1 11-5 14-3-3-6-5-9-6 0-4-2-8-5-11 4-1 7-1 11-1z"/><path d="M50 42c-2 5-6 9-12 10-1-4-3-6-6-9 3-3 5-7 6-11 4 1 8 3 12 6z"/><path d="M36 52c-6 2-11 1-15-2 2-3 3-7 3-11 4 0 8-1 12 0 0 4 0 9 0 13z"/><path d="M21 49c-5-2-9-6-10-11 3-1 6-3 9-6 3 3 7 5 11 6-1 4-4 7-10 11z"/></g></svg>`;
+  }
+  if(key==='Elowen'){
+    return `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M8 14l10 6 14-6 14 6 10-6-6 18-18 18L14 32 8 14z" fill="var(--soft)" stroke="var(--border-soft)" stroke-width="2"/><circle cx="26" cy="28" r="3" fill="var(--text)"/><circle cx="38" cy="28" r="3" fill="var(--text)"/><path d="M24 36c4 3 12 3 16 0" stroke="var(--accent)" stroke-width="3" fill="none" stroke-linecap="round"/></svg>`;
+  }
+  if(key==='System'){
+    return `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M28 6h8l2 6a20 20 0 0 1 6 4l6-2 4 7-5 4a20 20 0 0 1 0 6l5 4-4 7-6-2a20 20 0 0 1-6 4l-2 6h-8l-2-6a20 20 0 0 1-6-4l-6 2-4-7 5-4a20 20 0 0 1 0-6l-5-4 4-7 6 2a20 20 0 0 1 6-4l2-6z" fill="none" stroke="var(--muted)" stroke-width="3"/><circle cx="32" cy="32" r="8" fill="var(--muted)"/></svg>`;
+  }
+  const letter=(key||'?').charAt(0).toUpperCase();
+  return `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><circle cx="32" cy="32" r="30" fill="var(--panel)" stroke="var(--border-soft)" stroke-width="2"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="28" fill="var(--muted)" font-family="Inter, Arial">${letter}</text></svg>`;
+}
+function getAvatarHTML(authorRaw, displayName){
+  const alias = displayName;
+  const raw = authorRaw;
+  const img = Avatars.map[alias] || Avatars.map[raw];
+  const key = normalize(alias||raw);
+  if(img) return `<img src="${img}" alt="${escapeHTML(alias||raw)}"/>`;
+  return avatarSVG(key);
+}
+
+/* ---------- Windows ---------- */
+const windowsDiv=document.getElementById('windows'), content=document.getElementById('content');
+function visibleWindows(){
+  const all = Array.from(DB.windows.values());
+  if(!Filter.active) return all;
+  return all.filter(w=>{
+    const s=new Date(w.startAt), e=new Date(w.endAt);
+    if(Filter.from && e < Filter.from) return false;
+    if(Filter.to && s > Filter.to) return false;
+    return true;
+  });
+}
+function renderWindows(){
+  const vis=visibleWindows().sort((a,b)=> new Date(b.endAt)-new Date(a.endAt));
+  windowsDiv.innerHTML='';
+  if(!vis.length){
+    windowsDiv.innerHTML = '<div class="hint">无符合时间窗口。请清除筛选。</div>';
+    if(DB.current && !visibleWindows().some(w=> w.id===DB.current)){ DB.current=null; content.innerHTML='<div class="message system"><div class="bubble"><div class="body">无符合时间窗口。</div></div></div>'; }
+    return;
+  }
+  vis.forEach(w=>{
+    const d=document.createElement('div');
+    d.className='window-item'+(DB.current===w.id?' active':'');
+    d.setAttribute('data-wid', w.id);
+    d.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;"><div style="font-weight:700">${escapeHTML(w.title)}</div><span class="badge">${w.messageCount||0}</span></div><div class="window-meta">${fmt(w.startAt)} — ${fmt(w.endAt)}</div>`;
+    d.onclick=()=> openWindow(w.id);
+    windowsDiv.appendChild(d);
+  });
+  if(!DB.current){ openWindow(vis[0].id); }
+}
+function openWindow(wid){
+  DB.current=wid; renderWindows();
+  const msgs=DB.messages.filter(m=> m.windowId===wid);
+  content.innerHTML='';
+  msgs.forEach(m=>{
+    const disp=Aliases.map[m.author]||m.author; const key=normalize(disp);
+    const side=(key==='Elowen')?' right':((key==='System')?' system':'');
+    const box=document.createElement('div'); box.className='message'+side; box.id='message-'+m.id; box.dataset.msgid=m.id;
+    const avatar = (key==='System')?'':`<div class="avatar">${getAvatarHTML(m.author, disp)}</div>`;
+    const meta = (key==='System')?`<div class="meta">${escapeHTML(disp)} · ${fmt(m.createdAt)} · #${m.idxInWindow+1}</div>`:`<div class="meta"><strong>${escapeHTML(disp)}</strong> · ${fmt(m.createdAt)} · #${m.idxInWindow+1}</div>`;
+    box.innerHTML = `${avatar}<div class="bubble">${meta}<div class="body">${escapeHTML(m.content)}</div></div>`;
+    content.appendChild(box);
+  });
+  applyHighlightForCurrentWindow();
+}
+
+/* ---------- Search Snapshot (常驻 find bar) ---------- */
+const q=document.getElementById('q'), findBar=document.getElementById('findBar'), resultsCountEl=document.getElementById('resultsCount'), whereEl=document.getElementById('where');
+const timeFrom=document.getElementById('timeFrom'), timeTo=document.getElementById('timeTo');
+const btnHits=document.getElementById('btnHits');
+const hitsOverlay=document.getElementById('hitsOverlay'), hitsDrawer=document.getElementById('hitsDrawer'), closeHits=document.getElementById('closeHits');
+const hitsList=document.getElementById('hitsList'), hitSort=document.getElementById('hitSort'), hitsCount=document.getElementById('hitsCount');
+document.getElementById('applyTime').onclick=()=>{
+  Filter.from = timeFrom.value? new Date(timeFrom.value): null;
+  Filter.to   = timeTo.value?   new Date(timeTo.value):   null;
+  Filter.active = !!(Filter.from || Filter.to);
+  renderWindows(); recomputeSearch();
+};
+document.getElementById('clearTime').onclick=()=>{
+  timeFrom.value=''; timeTo.value=''; Filter.from=null; Filter.to=null; Filter.active=false;
+  renderWindows(); recomputeSearch();
+};
+q.addEventListener('input', ()=> recomputeSearch());
+
+function signatureOf(qstr, from, to){ return JSON.stringify({q:qstr.trim(), from:from?from.toISOString():'', to:to?to.toISOString():''}); }
+function recomputeSearch(){
+  const terms=parseTerms(q.value.trim());
+  const from=Filter.from, to=Filter.to; // 与时间筛选保持一致
+  const sig = signatureOf(q.value, from, to);
+  Query.terms=terms; Query.from=from; Query.to=to; Query.signature=sig;
+
+  if(!DB.messages.length || !terms.length){
+    Query.hits=[]; Query.index=-1; Query.winHitCounts=new Map(); Query.winLast=new Map();
+    resultsCountEl.textContent='— 条结果'; whereEl.textContent='命中 — / —';
+    btnHits.disabled=true; document.getElementById('prevHit').disabled=true; document.getElementById('nextHit').disabled=true;
+    applyHighlightForCurrentWindow();
+    return;
+  }
+  const winVis = new Set(visibleWindows().map(w=>w.id));
+  const hits = DB.messages.filter(m=>{
+    if(!winVis.has(m.windowId)) return false; // 只在可见窗口内命中
+    const t=new Date(m.createdAt);
+    if(from && t<from) return false;
+    if(to && t>to) return false;
+    const hay=((m.content||'')+' '+(m.windowTitle||'')).toLowerCase();
+    return terms.every(x=> hay.includes(x.toLowerCase()));
+  }).map(m=>({wid:m.windowId, mid:m.id, ts:new Date(m.createdAt).getTime()})).sort((a,b)=> a.ts-b.ts);
+
+  Query.hits=hits; Query.index=hits.length?0:-1;
+
+  const winCount=new Map(), winLast=new Map();
+  hits.forEach(h=>{ winCount.set(h.wid, (winCount.get(h.wid)||0)+1); const t=h.ts; if(!winLast.has(h.wid) || t>winLast.get(h.wid)) winLast.set(h.wid, t); });
+  Query.winHitCounts=winCount; Query.winLast=winLast;
+
+  resultsCountEl.textContent=`命中结果 ${hits.length}`;
+  whereEl.textContent = hits.length? `命中 ${Query.index+1} / ${Query.hits.length}` : '';
+  btnHits.disabled = hits.length===0;
+  document.getElementById('prevHit').disabled = hits.length===0;
+  document.getElementById('nextHit').disabled = hits.length===0;
+  btnHits.textContent = hits.length? `命中窗口（${winCount.size}）` : '命中窗口';
+
+  if(hits.length && Query.signature !== Query.lastAutoOpenSig){
+    openHitsDrawer(); Query.lastAutoOpenSig = Query.signature;
+  }
+
+  applyHighlightForCurrentWindow();
+  if(hits.length){ gotoHit(0,false); }
+}
+function applyHighlightForCurrentWindow(){
+  if(!DB.current){ content.innerHTML='<div class="message system"><div class="bubble"><div class="body">尚未导入数据或未选择窗口。</div></div></div>'; return; }
+  const msgs=DB.messages.filter(m=> m.windowId===DB.current);
+  const hitsInWin=new Set(Query.hits.filter(h=> h.wid===DB.current).map(h=>h.mid));
+  let i=0;
+  Array.from(content.children).forEach(div=>{
+    if(!div.classList.contains('message')) return;
+    const body=div.querySelector('.body');
+    body.innerHTML = highlight(msgs[i].content, Query.terms);
+    if(hitsInWin.has(msgs[i].id)) div.classList.add('hit'); else div.classList.remove('hit');
+    i++;
+  });
+}
+function gotoHit(delta, smooth=true){
+  if(!Query.hits.length) return;
+  Query.index=(Query.index+delta+Query.hits.length)%Query.hits.length;
+  const h=Query.hits[Query.index];
+  if(DB.current!==h.wid){ openWindow(h.wid); }
+  const el=document.getElementById('message-'+h.mid);
+  if(el){ el.scrollIntoView({behavior:smooth?'smooth':'instant', block:'center'}); }
+  whereEl.textContent=`命中 ${Query.index+1} / ${Query.hits.length}`;
+}
+document.getElementById('prevHit').onclick=()=> gotoHit(-1);
+document.getElementById('nextHit').onclick=()=> gotoHit(+1);
+
+/* ---------- Hits drawer ---------- */
+function openHitsDrawer(){ renderHitsList(); hitsOverlay.style.display='block'; hitsDrawer.style.display='block'; }
+function closeHitsDrawer(){ hitsOverlay.style.display='none'; hitsDrawer.style.display='none'; }
+btnHits.onclick=openHitsDrawer; closeHits.onclick=closeHitsDrawer; hitsOverlay.onclick=closeHitsDrawer;
+hitSort.onchange=renderHitsList;
+function renderHitsList(){
+  const items=[];
+  const ids = Array.from(new Set(Query.hits.map(h=> h.wid)));
+  ids.forEach(wid=>{
+    const w=DB.windows.get(wid); if(!w) return;
+    const count = Query.winHitCounts.get(wid)||0;
+    const lastTs = Query.winLast.get(wid)||0;
+    items.push({wid, title:w.title, count, lastTs, startAt:w.startAt});
+  });
+  const mode = hitSort.value;
+  items.sort((a,b)=> mode==='timeAsc' ? (new Date(a.startAt)-new Date(b.startAt)) : (b.lastTs - a.lastTs));
+  hitsCount.textContent = `${items.length} 个窗口`;
+  hitsList.innerHTML = items.map(it=> `<div class="hit-item" data-wid="${it.wid}"><div class="title">${escapeHTML(it.title)}</div><div class="hint">命中 ${it.count} · 最近 ${it.lastTs? new Date(it.lastTs).toLocaleString(): '—'}</div></div>`).join('') || '<div class="hint">无命中窗口</div>';
+  Array.from(hitsList.querySelectorAll('.hit-item')).forEach(div=>{
+    div.onclick=()=>{ const wid=div.getAttribute('data-wid'); openWindow(wid); closeHitsDrawer(); const first=Query.hits.find(h=> h.wid===wid); if(first){ Query.index = Query.hits.indexOf(first); gotoHit(0,false); } };
+  });
+}
+
+/* ---------- Import ---------- */
+const fileInput=document.getElementById('file');
+fileInput.addEventListener('change', async e=>{
+  const f=e.target.files[0]; if(!f)return; let parsed;
+  document.getElementById('r_name').textContent=f.name; document.getElementById('r_size').textContent=(f.size/1024/1024).toFixed(2)+' MB';
+  try{ parsed=JSON.parse(await f.text()); }catch(err){ document.getElementById('r_type').innerHTML='<span style="color:#ff6b6b">JSON 解析失败</span>'; return; }
+  try{
+    if(parsed && (Array.isArray(parsed.conversations) || parsed.mapping || (Array.isArray(parsed)&&parsed[0]?.mapping))){
+      const cs = parsed.conversations || (Array.isArray(parsed)? parsed : [parsed]);
+      const all=[]; const wins=new Map();
+      cs.forEach(conv=>{
+        const convId=conv.id||conv.conversation_id||Math.random().toString(36).slice(2);
+        const title=conv.title||`对话 ${String(convId).slice(0,8)}`;
+        const base=conv.create_time? new Date(conv.create_time*1000).toISOString() : new Date().toISOString();
+        const nodes=conv.mapping? Object.values(conv.mapping):[];
+        nodes.sort((a,b)=>(a?.message?.create_time??0)-(b?.message?.create_time??0));
+        nodes.forEach((n,i)=>{
+          const m=n?.message; if(!m) return;
+          const text=(m.content?.parts||[]).map(x=> typeof x==='string'? x : (x?.text??'')).join('\n') || m.content?.text || '';
+          const role=m.author?.role||m.author?.name||'Unknown';
+          if(!text && role!=='system') return;
+          const id=m.id||Math.random().toString(36).slice(2);
+          const createdAt=m.create_time? new Date(m.create_time*1000).toISOString() : new Date(new Date(base).getTime()+i*1000).toISOString();
+          all.push({id,windowId:convId,windowTitle:title,author:role,content:text,createdAt,idxInWindow:0});
+          if(!wins.has(convId)) wins.set(convId,{id:convId,title:title,startAt:createdAt,endAt:createdAt,messageCount:0});
+          const W=wins.get(convId); W.messageCount++; if(createdAt<W.startAt)W.startAt=createdAt; if(createdAt>W.endAt)W.endAt=createdAt;
+        });
+      });
+      finalize(all, wins); document.getElementById('r_type').textContent='OpenAI 官方导出'; return;
+    }
+  }catch(err){ document.getElementById('r_err').textContent=String(err); }
+  if(Array.isArray(parsed) && parsed.length && typeof parsed[0]==='object'){
+    document.getElementById('r_type').textContent='数组消息';
+    const keys=Object.keys(parsed[0]); const lower=keys.map(k=>k.toLowerCase()); const pick=(...alts)=> keys[lower.findIndex(l=> alts.includes(l))] || '';
+    const mA=pick('author','role','speaker','from'), mC=pick('content','text','message','body'), mT=pick('createdat','time','timestamp','date'), mW=pick('windowid','conversationid','threadid','session'), mWT=pick('windowtitle','title','conversationtitle','threadtitle'), mId=pick('id','messageid','mid');
+    const msgs=[]; const wins=new Map();
+    parsed.forEach((r,i)=>{
+      const id= mId? String(r[mId]): Math.random().toString(36).slice(2);
+      const windowId = mW? String(r[mW]): 'default';
+      const windowTitle = mWT? String(r[mWT]): (windowId==='default'?'默认窗口':String(windowId));
+      const author = mA? String(r[mA]): 'Unknown';
+      const content = mC? String(r[mC]??''):'';
+      const createdAtISO = mT? (r[mT] ? new Date(r[mT]).toISOString(): null): null;
+      const createdAt = createdAtISO || new Date(Date.now()+i).toISOString();
+      msgs.push({id, windowId, windowTitle, author, content, createdAt, idxInWindow:0});
+      if(!wins.has(windowId)) wins.set(windowId,{id:windowId,title:windowTitle,startAt:createdAt,endAt:createdAt,messageCount:0});
+      const W=wins.get(windowId); W.messageCount++; if(createdAt<W.startAt)W.startAt=createdAt; if(createdAt>W.endAt)W.endAt=createdAt;
+    });
+    finalize(msgs, wins);
+  } else {
+    document.getElementById('r_type').innerHTML='<span style="color:#ff6b6b">未识别格式</span>';
+  }
+});
+function finalize(all, wins){
+  const byWin=new Map(); all.forEach(m=>{ if(!byWin.has(m.windowId)) byWin.set(m.windowId,[]); byWin.get(m.windowId).push(m); });
+  byWin.forEach(list=> list.sort((a,b)=> new Date(a.createdAt)-new Date(b.createdAt)).forEach((m,i)=> m.idxInWindow=i));
+  DB.messages = Array.from(byWin.values()).flat(); DB.windows=wins; renderWindows();
+  const latest = visibleWindows().sort((a,b)=> new Date(b.endAt)-new Date(a.endAt))[0];
+  if(latest) openWindow(latest.id);
+  recomputeSearch();
+}
+
+/* ---------- Delete / Export / Clear ---------- */
+document.getElementById('deleteWindow').onclick=()=>{ if(!DB.current)return; const W=DB.windows.get(DB.current); if(!W)return;
+  if(!confirm(`删除窗口《${W.title}》的全部 ${W.messageCount} 条消息？`)) return;
+  DB.messages = DB.messages.filter(m=> m.windowId!==W.id); DB.windows.delete(W.id); DB.current=null; renderWindows(); content.innerHTML='<div class="message system"><div class="bubble"><div class="body">已删除窗口。</div></div></div>'; recomputeSearch(); };
+document.getElementById('export').onclick=()=>{ const payload={schema:"ethan.convo.library.v1", generatedAt:new Date().toISOString(), windows:Array.from(DB.windows.values()), messages:DB.messages, aliases:Aliases.map, avatars:Avatars.map}; const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`conversation-library-${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href); };
+document.getElementById('clear').onclick=()=>{ DB.messages=[]; DB.windows=new Map(); DB.current=null; renderWindows(); content.innerHTML='<div class="message system"><div class="bubble"><div class="body">已清空。请导入 JSON。</div></div></div>'; Query.hits=[]; Query.index=-1; btnHits.disabled=true; };
+
+/* ---------- Alias + avatar panel ---------- */
+const aliasBtn=document.getElementById('aliasBtn'), aliasPanel=document.getElementById('aliasPanel');
+const aliasRows=document.getElementById('aliasRows'); const aliasSave=document.getElementById('aliasSave'); const aliasReset=document.getElementById('aliasReset'); const aliasClose=document.getElementById('aliasClose');
+aliasBtn.onclick=()=>{
+  const authors = Array.from(new Set(DB.messages.map(m=> m.author))).sort();
+  aliasRows.innerHTML = authors.map(name=>{
+    const alias = Aliases.map[name]||'';
+    const inputId = 'up_'+btoa(unescape(encodeURIComponent(name))).replace(/=/g,'');
+    return `<div class="row"><div>${escapeHTML(name)}</div><div><input type="text" data-raw="${escapeHTML(name)}" placeholder="别名" value="${escapeHTML(alias)}"/> <label class="btn" style="margin-left:6px"><input type="file" accept="image/*" id="${inputId}"/>上传头像</label> <span class="note" id="${inputId}_note">${Avatars.map[name]?'已设置头像':'未设置头像'}</span></div></div>`;
+  }).join('') || '<div class="note">当前库没有作者。</div>';
+  authors.forEach(name=>{
+    const inputId='up_'+btoa(unescape(encodeURIComponent(name))).replace(/=/g,'');
+    const fileInput=document.getElementById(inputId);
+    if(!fileInput)return;
+    fileInput.onchange=(e)=>{
+      const f=e.target.files[0]; if(!f)return;
+      const toDataURL=(file,max=160,q=.85)=>new Promise((resolve,reject)=>{
+        const fr=new FileReader(); fr.onload=()=>{ const img=new Image(); img.onload=()=>{
+          const c=document.createElement('canvas'); let w=img.width,h=img.height;
+          const scale=Math.min(1,max/Math.max(w,h)); w=Math.round(w*scale); h=Math.round(h*scale);
+          c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h);
+          try{ resolve(c.toDataURL('image/webp', q)); }catch(e){ resolve(c.toDataURL('image/jpeg', q)); }
+        }; img.onerror=()=>resolve(fr.result); img.src=fr.result; }; fr.onerror=reject; fr.readAsDataURL(file); });
+      toDataURL(f).then(data=>{
+        Avatars.map[name]=data; document.getElementById(inputId+'_note').textContent='已设置头像';
+      });
+    };
+  });
+  aliasPanel.style.display='block';
+};
+aliasSave.onclick=()=>{
+  const inputs=aliasRows.querySelectorAll('input[type="text"]');
+  const newAliasMap={}; inputs.forEach(inp=>{ const raw=inp.getAttribute('data-raw'); const v=inp.value.trim(); if(v) newAliasMap[raw]=v; });
+  Aliases.map=newAliasMap;
+  try{ localStorage.setItem('cl.alias', JSON.stringify(Aliases.map||{})); }catch(e){ console.warn('alias persist failed', e); }
+  try{ localStorage.setItem('cl.avatars', JSON.stringify(Avatars.map||{})); }catch(e){ console.warn('avatar persist failed', e); alert('头像未持久化：浏览器本地存储空间已满。'); }
+  if(DB.current) openWindow(DB.current);
+  aliasPanel.style.display='none';
+};
+aliasReset.onclick=()=>{
+  if(!confirm('确认重置所有作者别名与头像？')) return;
+  Aliases.map={}; Avatars.map={};
+  localStorage.setItem('cl.alias','{}'); localStorage.setItem('cl.avatars','{}');
+  if(DB.current) openWindow(DB.current);
+  aliasPanel.style.display='none';
+};
+aliasClose.onclick=()=> aliasPanel.style.display='none';
+
+/* ---------- Watermark ---------- */
+const WM={ text: localStorage.getItem('cl.wm.text') || '@Ethan · for My Elowen', show: (localStorage.getItem('cl.wm.show')??'1')!=='0' };
+const wmEl=document.getElementById('watermark'); const wmBtn=document.getElementById('wmBtn');
+function applyWM(){ wmEl.textContent = WM.text; wmEl.style.display = WM.show ? 'block':'none'; wmBtn.textContent = '水印:' + (WM.show?'开':'关'); }
+wmBtn.onclick=(e)=>{ if(e.shiftKey){ const t=prompt('输入水印文本：', WM.text); if(t!=null){ WM.text=t; localStorage.setItem('cl.wm.text', WM.text); } } else { WM.show=!WM.show; localStorage.setItem('cl.wm.show', WM.show?'1':'0'); } applyWM(); };
+applyWM();
+
+</script>
+</body>
+</html>
