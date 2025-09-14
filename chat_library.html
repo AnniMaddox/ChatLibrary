@@ -3,7 +3,14 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>我们的对话图书馆 · 稳定版（筛选窗口 · 常驻检索条 · 水印）</title>
+<title>我們的對話圖書館 · 穩定版（篩選窗口 · 常駐索檢條 · 水印）</title>
+<link rel="manifest" href="manifest.json">
+<!-- iOS 封面設定 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ChatLibrary">
+<link rel="apple-touch-icon" href="icons/icon-192x192.png"> <!-- 可自備 PWA icon -->
+
 <style>
   :root{
     --bg-0:#0b0c10; --bg-1:#0f121a; --panel:#111219; --card:#161824;
@@ -88,6 +95,7 @@
   #watermark{position:fixed; right:24px; bottom:20px; color:var(--text); opacity:.10; font-size:22px; font-weight:700;
     letter-spacing:.3px; transform:rotate(-8deg); pointer-events:none; user-select:none; z-index:6}
 </style>
+  
 </head>
 <body class="theme-feather">
 <div id="app">
@@ -516,6 +524,13 @@ const wmEl=document.getElementById('watermark'); const wmBtn=document.getElement
 function applyWM(){ wmEl.textContent = WM.text; wmEl.style.display = WM.show ? 'block':'none'; wmBtn.textContent = '水印:' + (WM.show?'开':'关'); }
 wmBtn.onclick=(e)=>{ if(e.shiftKey){ const t=prompt('输入水印文本：', WM.text); if(t!=null){ WM.text=t; localStorage.setItem('cl.wm.text', WM.text); } } else { WM.show=!WM.show; localStorage.setItem('cl.wm.show', WM.show?'1':'0'); } applyWM(); };
 applyWM();
+  
+// Register service worker for PWA
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('sw.js');
+    });
+}
 
 </script>
 </body>
